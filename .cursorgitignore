@@ -1,0 +1,41 @@
+# Unity场景文件
+.unity
+# Unity预制体文件
+.prefab
+# Unity资源文件
+.asset
+# Unity材质文件
+.mat
+# Unity动画文件
+.anim
+# Unity动画控制器
+.controller
+# Unity动画控制器覆盖文件
+.overrideController
+# Unity元数据文件
+.meta
+# 3D模型文件
+.[Ff][Bb][Xx]
+# 图片文件
+.tga
+.png
+.jpg
+# 二进制数据文件
+.bytes
+# Unity可播放资源
+.playable
+# Unity包文件
+.unitypackage
+# 动态链接库
+.dll
+# 可执行文件
+.exe
+# 压缩文件
+.zip
+.rar
+.7z
+.tar
+.gz
+.bz2
+# Debian安装包
+.deb

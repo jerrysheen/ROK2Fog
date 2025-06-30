@@ -1,0 +1,14 @@
+{
+    "seed": 12345,
+    "noiseScale": 0.01,
+    "mountainHeight": 15.0,
+    "hillHeight": 8.0,
+    "plainHeight": 2.0,
+    "lakeDepth": -2.0,
+    "forestHeight": 5.0,
+    "plainWeight": 0.4,
+    "hillWeight": 0.25,
+    "mountainWeight": 0.15,
+    "lakeWeight": 0.1,
+    "forestWeight": 0.1
+} 

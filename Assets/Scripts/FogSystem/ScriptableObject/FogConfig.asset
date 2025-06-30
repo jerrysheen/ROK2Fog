@@ -1,0 +1,40 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3e5a744f5ab58254da8b8745aa6d5003, type: 3}
+  m_Name: FogConfig
+  m_EditorClassIdentifier: 
+  cellSize: 18
+  maxTriangles: 2800
+  targetTriangles: 2000
+  edgeDensityMultiplier: 2
+  updateDistance: 50
+  maxCacheDistance: 200
+  cacheSize: 16
+  mountainDepthOffset: -2
+  riverDepthOffset: -1.5
+  heightSmoothness: 0.3
+  fogMaterial: {fileID: 0}
+  occlusionMaterial: {fileID: 0}
+  fogHeight: 5
+  fogAlpha: 0.8
+  lodDistances:
+  - 50
+  - 100
+  - 200
+  lodDetailLevels:
+  - 1
+  - 0.7
+  - 0.4
+  - 0.2
+  showWireframe: 0
+  showRegionBounds: 0
+  showPerformanceStats: 0
