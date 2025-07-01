@@ -54,11 +54,11 @@ namespace FogSystem
     {
         public int seed = 12345;
         public float noiseScale = 0.01f;
-        public float mountainHeight = 15f;
-        public float hillHeight = 8f;
-        public float plainHeight = 2f;
-        public float lakeDepth = -2f;
-        public float forestHeight = 5f;
+        public float mountainHeight = 12f;
+        public float hillHeight = 12f;
+        public float plainHeight = 12f;
+        public float lakeDepth = 12f;
+        public float forestHeight = 12f;
         
         // 地形类型分布权重
         public float plainWeight = 0.4f;
@@ -240,34 +240,21 @@ namespace FogSystem
         /// </summary>
         private float CalculateHeight(TerrainType terrainType, float noiseValue, int x, int z)
         {
-            float baseHeight = 0f;
-            
             switch (terrainType)
             {
                 case TerrainType.Plain:
-                    baseHeight = config.plainHeight; // 低地形
-                    break;
                 case TerrainType.Hill:
-                    baseHeight = config.hillHeight; // 中高地形
-                    break;
                 case TerrainType.Mountain:
-                    baseHeight = config.mountainHeight; // 高地形
-                    break;
                 case TerrainType.Lake:
-                    baseHeight = config.lakeDepth; // 低地形（负值）
-                    break;
                 case TerrainType.Forest:
-                    baseHeight = config.forestHeight; // 中高地形
-                    break;
+                    // 非解锁地形基础高度为12，添加±2的高度浮动
+                    float heightVariation = (noiseValue - 0.5f) * 4f; // -2 to 2
+                    return 12f + heightVariation;
                 case TerrainType.Unlocked:
-                    return 0f; // 解锁区域固定高度为0，不添加噪声变化
+                    return 0f; // 解锁区域固定高度为0
+                default:
+                    return 12f;
             }
-            
-            // 添加噪声变化，让同类型地形也有高度差异
-            float heightVariation = (noiseValue - 0.5f) * 2f; // -1 to 1
-            baseHeight += heightVariation * (Mathf.Abs(baseHeight) * 0.3f); // 30%的高度变化
-            
-            return baseHeight;
         }
         
         /// <summary>

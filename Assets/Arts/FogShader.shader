@@ -1,61 +1,95 @@
-Shader "Unlit/FogShader"
+Shader "Universal Render Pipeline/FogShader"
 {
     Properties
     {
         _MainTex ("Texture", 2D) = "white" {}
+        _FogColor ("Fog Color", Color) = (0.5, 0.5, 0.5, 1)
+        _FogDensity ("Fog 边缘过渡", Range(0, 5)) = 2
+        _FogDepthLerp ("_FogDepthLerp", Range(0, 3)) = 0.1
     }
     SubShader
     {
-        Tags { "RenderType"="Transparent" }
+        Tags 
+        { 
+            "RenderType"="Transparent" 
+            "Queue"="Transparent"
+            "RenderPipeline"="UniversalRenderPipeline"
+        }
         LOD 100
         Blend SrcAlpha OneMinusSrcAlpha
+        ZWrite Off
+        
         Pass
         {
-            CGPROGRAM
+            Name "ForwardLit"
+            Tags { "LightMode"="UniversalForward" }
+            
+            HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
-            // make fog work
-            #pragma multi_compile_fog
-            #include "UnityCG.cginc"
+            
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl"
 
-            struct appdata
+            struct Attributes
             {
-                float4 vertex : POSITION;
+                float4 positionOS : POSITION;
                 float2 uv : TEXCOORD0;
                 float4 color : COLOR;
             };
 
-            struct v2f
+            struct Varyings
             {
-                float4 color : TEXCOORD1;
+                float4 positionCS : SV_POSITION;
                 float2 uv : TEXCOORD0;
-                UNITY_FOG_COORDS(1)
-                float4 vertex : SV_POSITION;
+                float4 color : TEXCOORD1;
+                float viewZ : TEXCOORD2;  // 添加view space depth
             };
 
-            sampler2D _MainTex;
-            float4 _MainTex_ST;
+            CBUFFER_START(UnityPerMaterial)
+                float4 _MainTex_ST;
+                float4 _FogColor;
+                float _FogDensity;
+                float _FogDepthLerp;
+            CBUFFER_END
 
-            v2f vert (appdata v)
+            Varyings vert (Attributes input)
             {
-                v2f o;
-                o.vertex = UnityObjectToClipPos(v.vertex);
-                o.uv = TRANSFORM_TEX(v.uv, _MainTex);
-                UNITY_TRANSFER_FOG(o,o.vertex);
-                o.color = v.color;
-                return o;
+                Varyings output;
+                output.positionCS = TransformObjectToHClip(input.positionOS.xyz);
+                
+                // 计算world space位置，然后转换到view space获取z分量
+                float3 positionWS = TransformObjectToWorld(input.positionOS.xyz);
+                float3 positionVS = TransformWorldToView(positionWS);
+                output.viewZ = positionVS.z;  // view space的z分量（通常是负值）
+                
+                output.uv = TRANSFORM_TEX(input.uv, _MainTex);
+                output.color = input.color;
+                
+                return output;
             }
 
-            fixed4 frag (v2f i) : SV_Target
+            half4 frag (Varyings input) : SV_Target
             {
-                // sample the texture
-                fixed4 col = tex2D(_MainTex, i.uv);
-                // apply fog
-                UNITY_APPLY_FOG(i.fogCoord, col);
-                return half4(i.color.xyz, 0.5f);
-                return col;
-            }
-            ENDCG
+                float2 screenUV = input.positionCS.xy / _ScaledScreenParams.xy;
+                float depth = SAMPLE_TEXTURE2D(_CameraDepthTexture, sampler_CameraDepthTexture, screenUV).r; //采样深度
+                float depthValue = LinearEyeDepth(depth, _ZBufferParams); //转换深度到0-1区间灰度值
+                
+                depthValue -= abs(input.viewZ);
+                depthValue = abs(depthValue) * 0.1;
+                depthValue = clamp(depthValue, 0.0, 1.0);
+                depthValue *= depthValue;
+
+                half vertexColor = clamp(input.color.x, 0.0, 1.0);
+                vertexColor = log2(vertexColor);
+                vertexColor *= _FogDensity;
+                vertexColor = exp2(vertexColor);
+                half minAlpha = min(depthValue, vertexColor);
+                minAlpha = saturate(minAlpha * _FogColor.a);
+                return half4(_FogColor.xyz, minAlpha);
+          }
+            ENDHLSL
         }
     }
 }

@@ -515,8 +515,8 @@ namespace FogSystem
                     int queryZ = Mathf.Clamp(globalZ, 0, gridCountZ - 1);
                     TerrainCell terrainCell = terrainReader.GetTerrainCellAtGrid(queryX, queryZ, cellSize);
                     
-                    // 根据小块类型获取顶点颜色
-                    Color vertexColor = GetVertexColorWithBlockType(terrainCell, localX, localZ, cellBlocks, blockGridCountX, blockGridCountZ);
+                    // 根据解锁状态设置顶点颜色（使用Color的r,g通道存储Vector2信息）
+                    Color vertexColor = GetVertexUnlockColor(terrainCell, globalX, globalZ);
                     
                     verticesList.Add(new Vector3(worldX, terrainCell.height, worldZ));
                     uvsList.Add(new Vector2((float)localX / blockGridCountX, (float)localZ / blockGridCountZ));
@@ -639,31 +639,41 @@ namespace FogSystem
             Vector2 leftMidUV = Vector2.Lerp(blUV, tlUV, 0.5f);
             Vector2 centerUV = Vector2.Lerp(Vector2.Lerp(blUV, brUV, 0.5f), Vector2.Lerp(tlUV, trUV, 0.5f), 0.5f);
             
-            // 颜色使用PartialUnlocked的颜色
-            Color partialColor = new Color(1.0f, 1.0f, 1.0f, 1f);
+              // 颜色使用PartialUnlocked的颜色
+            Color partialColor = new Color(1.0f, 1.0f, 0.0f, 0f);
             
             // 添加新顶点到列表中，并记录它们的索引
             int bottomMidIndex = verticesList.Count;
+
+
             verticesList.Add(bottomMid);
             uvsList.Add(bottomMidUV);
             colorsList.Add(partialColor);
             
             int rightMidIndex = verticesList.Count;
+
+
             verticesList.Add(rightMid);
             uvsList.Add(rightMidUV);
             colorsList.Add(partialColor);
             
             int topMidIndex = verticesList.Count;
+
+
             verticesList.Add(topMid);
             uvsList.Add(topMidUV);
             colorsList.Add(partialColor);
             
             int leftMidIndex = verticesList.Count;
+
+
             verticesList.Add(leftMid);
             uvsList.Add(leftMidUV);
             colorsList.Add(partialColor);
             
             int centerIndex = verticesList.Count;
+
+
             verticesList.Add(center);
             uvsList.Add(centerUV);
             colorsList.Add(partialColor);
@@ -798,31 +808,26 @@ namespace FogSystem
         }
         
         /// <summary>
-        /// 根据小块类型获取顶点颜色
+        /// 根据顶点解锁状态获取颜色信息（使用Color的r,g通道存储Vector2信息）
         /// </summary>
-        private Color GetVertexColorWithBlockType(TerrainCell terrainCell, int localX, int localZ, CellBlock[,] cellBlocks, int blockGridCountX, int blockGridCountZ)
+        private Color GetVertexUnlockColor(TerrainCell terrainCell, int globalX, int globalZ)
         {
-            return Color.white;
-            // 找到影响这个顶点的小块类型（一个顶点可能被多个小块共享）
-            CellBlockType dominantBlockType = GetDominantBlockTypeForVertex(localX, localZ, cellBlocks, blockGridCountX, blockGridCountZ);
+            // 检查顶点是否被解锁
+            bool isUnlocked = terrainCell.isUnlocked || terrainCell.terrainType == TerrainType.Unlocked;
             
-            // 根据小块类型返回对应颜色
-            switch (dominantBlockType)
+            // 根据解锁状态设置Vector2值
+            Vector2 unlockState;
+            if (isUnlocked)
             {
-                case CellBlockType.FullUnlocked:
-                    return Color.white; // 完全解锁 - 白色
-                    
-                case CellBlockType.PartialUnlocked:
-                    return new Color(1.0f, 0.0f, 0.0f, 1f); 
-                    
-                case CellBlockType.AdjacentUnLocked:
-                    return new Color(0.0f, 1.0f, 0.0f, 1f); 
-                    
-                case CellBlockType.FullLocked:
-                    return new Color(0.0f, 0.0f, 0.0f, 1f);
-                default:
-                    return Color.black;
+                unlockState = new Vector2(0f, 1f); // 已解锁: (0, 1)
             }
+            else
+            {
+                unlockState = new Vector2(1f, 1f); // 未解锁: (1, 1)
+            }
+            
+            // 将Vector2信息编码到Color的r,g通道中，b,a通道设为0
+            return new Color(unlockState.x, unlockState.y, 0f, 0f);
         }
         
         /// <summary>
