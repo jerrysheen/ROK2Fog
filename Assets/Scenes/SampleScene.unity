@@ -286,7 +286,7 @@ Camera:
     width: 1
     height: 1
   near clip plane: 0.3
-  far clip plane: 150
+  far clip plane: 3000
   field of view: 30
   orthographic: 0
   orthographic size: 5
@@ -314,7 +314,7 @@ Transform:
   m_GameObject: {fileID: 330585543}
   serializedVersion: 2
   m_LocalRotation: {x: 0.38268343, y: 0, z: 0, w: 0.92387956}
-  m_LocalPosition: {x: 245.8, y: 39, z: 130.9}
+  m_LocalPosition: {x: 36, y: 614, z: 242}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -582,7 +582,7 @@ Transform:
   m_GameObject: {fileID: 821400550}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 25000, y: 0, z: 25000}
+  m_LocalPosition: {x: 25000, y: -0.2, z: 25000}
   m_LocalScale: {x: 5000, y: 5000, z: 5000}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -647,7 +647,6 @@ GameObject:
   m_Component:
   - component: {fileID: 849199816}
   - component: {fileID: 849199818}
-  - component: {fileID: 849199817}
   m_Layer: 0
   m_Name: GameObject
   m_TagString: Untagged
@@ -670,23 +669,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &849199817
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 849199815}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 791ab6829da68d145b9817c9b59102e1, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  fogParent: {fileID: 0}
-  fogLayer:
-    m_Bits: 0
-  config: {fileID: 0}
-  poolSize: 20
 --- !u!114 &849199818
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -705,10 +687,6 @@ MonoBehaviour:
   dataCellSize: 3
   meshWidth: 360
   meshHeight: 180
-  gridScanSize: 18
-  subGridSize: 9
-  showGridDebugInfo: 1
-  showGridBounds: 1
   terrainMaterial: {fileID: 2100000, guid: 2f0fc9efe204af041bbd46218500956d, type: 2}
   showUnlockedOverlay: 1
   mainCamera: {fileID: 0}
@@ -717,6 +695,7 @@ MonoBehaviour:
   cullingMargin: 10
   showDebugInfo: 1
   showVisibleMeshBounds: 1
+  showCellBlockGizmos: 0
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

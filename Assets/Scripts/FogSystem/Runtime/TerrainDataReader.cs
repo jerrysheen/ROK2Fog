@@ -17,7 +17,19 @@ namespace FogSystem
     }
 
     /// <summary>
-    /// 地形数据结构
+    /// 地形角点数据结构
+    /// </summary>
+    [System.Serializable]
+    public struct TerrainVertex
+    {
+        public float height;
+        public TerrainType terrainType;
+        public bool isUnlocked;
+        public float noiseValue;  // 用于额外的随机性
+    }
+
+    /// <summary>
+    /// 地形格子数据结构（基于四个角点计算）
     /// </summary>
     [System.Serializable]
     public struct TerrainCell
@@ -26,6 +38,12 @@ namespace FogSystem
         public TerrainType terrainType;
         public bool isUnlocked;
         public float noiseValue;  // 用于额外的随机性
+        
+        // 四个角点的引用信息
+        public TerrainVertex bottomLeft;
+        public TerrainVertex bottomRight;
+        public TerrainVertex topRight;
+        public TerrainVertex topLeft;
     }
 
     /// <summary>
@@ -51,21 +69,23 @@ namespace FogSystem
     }
 
     /// <summary>
-    /// 地形数据读取器 - 独立数据精度版本
-    /// 支持与显示系统不同的数据粒度，通过插值提供任意精度的查询
+    /// 地形数据读取器 - 基于角点的数据存储
+    /// 存储地形角点数据，支持高效的cell查询
     /// </summary>
     public class TerrainDataReader
     {
-        private TerrainCell[,] terrainData;
+        private TerrainVertex[,] vertexData;  // 角点数据数组
         private float mapWidth;      // 地图总宽度（米）
         private float mapHeight;     // 地图总高度（米）
         private float dataCellSize;  // 数据格子大小（米）
-        private int dataGridCountX;  // 数据格子数量X
-        private int dataGridCountZ;  // 数据格子数量Z
+        private int dataGridCountX;  // 数据格子数量X（cell数量）
+        private int dataGridCountZ;  // 数据格子数量Z（cell数量）
+        private int vertexCountX;    // 角点数量X（比格子数多1）
+        private int vertexCountZ;    // 角点数量Z（比格子数多1）
         private TerrainDataConfig config;
         
         /// <summary>
-        /// 初始化并生成所有地形数据
+        /// 初始化并生成所有地形角点数据
         /// </summary>
         /// <param name="mapWidth">地图总宽度（米）</param>
         /// <param name="mapHeight">地图总高度（米）</param>
@@ -80,16 +100,20 @@ namespace FogSystem
             this.dataGridCountX = Mathf.CeilToInt(mapWidth / dataCellSize);
             this.dataGridCountZ = Mathf.CeilToInt(mapHeight / dataCellSize);
             
+            // 角点数量比格子数量多1（因为格子的边界需要角点）
+            this.vertexCountX = dataGridCountX + 1;
+            this.vertexCountZ = dataGridCountZ + 1;
+            
             // 加载配置数据
             LoadConfigData();
             
-            // 初始化地形数据数组
-            terrainData = new TerrainCell[dataGridCountX, dataGridCountZ];
+            // 初始化角点数据数组
+            vertexData = new TerrainVertex[vertexCountX, vertexCountZ];
             
-            // 生成地形数据
-            GenerateAllTerrainData();
+            // 生成所有角点数据
+            GenerateAllVertexData();
             
-            Debug.Log($"TerrainDataReader: 地图尺寸 {mapWidth}x{mapHeight}m，数据精度 {dataCellSize}m，生成了 {dataGridCountX}x{dataGridCountZ} 个数据格子");
+            Debug.Log($"TerrainDataReader: 地图尺寸 {mapWidth}x{mapHeight}m，数据精度 {dataCellSize}m，生成了 {dataGridCountX}x{dataGridCountZ} 个格子，{vertexCountX}x{vertexCountZ} 个角点");
         }
         
         /// <summary>
@@ -140,32 +164,32 @@ namespace FogSystem
         }
         
         /// <summary>
-        /// 生成所有地形数据
+        /// 生成所有角点数据
         /// </summary>
-        private void GenerateAllTerrainData()
+        private void GenerateAllVertexData()
         {
             Random.InitState(config.seed);
             
-            for (int x = 0; x < dataGridCountX; x++)
+            for (int x = 0; x < vertexCountX; x++)
             {
-                for (int z = 0; z < dataGridCountZ; z++)
+                for (int z = 0; z < vertexCountZ; z++)
                 {
-                    terrainData[x, z] = GenerateTerrainCell(x, z);
+                    vertexData[x, z] = GenerateTerrainVertex(x, z);
                 }
             }
         }
         
         /// <summary>
-        /// 生成单个地形格子数据
+        /// 生成单个角点数据
         /// </summary>
-        private TerrainCell GenerateTerrainCell(int x, int z)
+        private TerrainVertex GenerateTerrainVertex(int x, int z)
         {
-            TerrainCell cell = new TerrainCell();
+            TerrainVertex vertex = new TerrainVertex();
             
             // 生成基础噪声值
             float noiseX = x * config.noiseScale;
             float noiseZ = z * config.noiseScale;
-            cell.noiseValue = Mathf.PerlinNoise(noiseX, noiseZ);
+            vertex.noiseValue = Mathf.PerlinNoise(noiseX, noiseZ);
             
             // 首先判断是否为解锁区域
             float unlockNoise = Mathf.PerlinNoise(x * 0.02f + 1000f, z * 0.02f + 1000f);
@@ -174,20 +198,20 @@ namespace FogSystem
             if (isUnlockedArea)
             {
                 // 解锁区域直接设置为Unlocked类型
-                cell.terrainType = TerrainType.Unlocked;
-                cell.isUnlocked = true;
+                vertex.terrainType = TerrainType.Unlocked;
+                vertex.isUnlocked = true;
             }
             else
             {
                 // 未解锁区域确定地形类型
-                cell.terrainType = DetermineTerrainType(x, z, cell.noiseValue);
-                cell.isUnlocked = false;
+                vertex.terrainType = DetermineTerrainType(x, z, vertex.noiseValue);
+                vertex.isUnlocked = false;
             }
             
             // 根据地形类型确定高度
-            cell.height = CalculateHeight(cell.terrainType, cell.noiseValue, x, z);
+            vertex.height = CalculateHeight(vertex.terrainType, vertex.noiseValue, x, z);
             
-            return cell;
+            return vertex;
         }
         
         /// <summary>
@@ -247,47 +271,89 @@ namespace FogSystem
         }
         
         /// <summary>
-        /// 获取指定数据格子坐标的高度
+        /// 获取指定角点坐标的角点数据
         /// </summary>
-        public float GetHeight(int x, int z)
+        public TerrainVertex GetVertex(int x, int z)
         {
-            if (x < 0 || x >= dataGridCountX || z < 0 || z >= dataGridCountZ)
-                return 0f;
+            if (x < 0 || x >= vertexCountX || z < 0 || z >= vertexCountZ)
+                return new TerrainVertex { height = 0f, terrainType = TerrainType.Plain, isUnlocked = false };
                 
-            return terrainData[x, z].height;
+            return vertexData[x, z];
         }
         
         /// <summary>
-        /// 获取指定数据格子坐标的地形数据
+        /// 获取指定数据格子坐标的地形数据（通过四个角点计算）
         /// </summary>
         public TerrainCell GetTerrainCell(int x, int z)
         {
             if (x < 0 || x >= dataGridCountX || z < 0 || z >= dataGridCountZ)
                 return new TerrainCell { height = 0f, terrainType = TerrainType.Plain, isUnlocked = false };
-                
-            return terrainData[x, z];
+            
+            // 获取格子的四个角点（左下、右下、右上、左上）
+            TerrainVertex bottomLeft = GetVertex(x, z);
+            TerrainVertex bottomRight = GetVertex(x + 1, z);
+            TerrainVertex topRight = GetVertex(x + 1, z + 1);
+            TerrainVertex topLeft = GetVertex(x, z + 1);
+            
+            // 基于四个角点构建TerrainCell
+            return ConstructTerrainCell(bottomLeft, bottomRight, topRight, topLeft);
         }
         
         /// <summary>
-        /// 设置指定数据格子坐标的解锁状态
+        /// 基于四个角点构建地形格子数据
         /// </summary>
-        public void SetUnlocked(int x, int z, bool unlocked)
+        private TerrainCell ConstructTerrainCell(TerrainVertex bottomLeft, TerrainVertex bottomRight, TerrainVertex topRight, TerrainVertex topLeft)
         {
-            if (x < 0 || x >= dataGridCountX || z < 0 || z >= dataGridCountZ)
+            TerrainCell cell = new TerrainCell();
+            
+            // 存储四个角点数据
+            cell.bottomLeft = bottomLeft;
+            cell.bottomRight = bottomRight;
+            cell.topRight = topRight;
+            cell.topLeft = topLeft;
+            
+            // 计算cell的综合属性（取平均值或主导属性）
+            cell.height = (bottomLeft.height + bottomRight.height + topRight.height + topLeft.height) / 4f;
+            cell.noiseValue = (bottomLeft.noiseValue + bottomRight.noiseValue + topRight.noiseValue + topLeft.noiseValue) / 4f;
+            
+            // 解锁状态：四个角点都解锁才算解锁
+            cell.isUnlocked = bottomLeft.isUnlocked && bottomRight.isUnlocked && topRight.isUnlocked && topLeft.isUnlocked;
+            
+            // 地形类型：取主导类型（简单起见，取左下角的类型）
+            cell.terrainType = bottomLeft.terrainType;
+            
+            return cell;
+        }
+        
+        /// <summary>
+        /// 获取指定数据格子坐标的高度
+        /// </summary>
+        public float GetHeight(int x, int z)
+        {
+            TerrainCell cell = GetTerrainCell(x, z);
+            return cell.height;
+        }
+        
+        /// <summary>
+        /// 设置指定角点坐标的解锁状态
+        /// </summary>
+        public void SetVertexUnlocked(int x, int z, bool unlocked)
+        {
+            if (x < 0 || x >= vertexCountX || z < 0 || z >= vertexCountZ)
                 return;
                 
-            terrainData[x, z].isUnlocked = unlocked;
+            vertexData[x, z].isUnlocked = unlocked;
         }
         
         /// <summary>
-        /// 检查指定数据格子坐标是否已解锁
+        /// 检查指定角点坐标是否已解锁
         /// </summary>
-        public bool IsUnlocked(int x, int z)
+        public bool IsVertexUnlocked(int x, int z)
         {
-            if (x < 0 || x >= dataGridCountX || z < 0 || z >= dataGridCountZ)
+            if (x < 0 || x >= vertexCountX || z < 0 || z >= vertexCountZ)
                 return false;
                 
-            return terrainData[x, z].isUnlocked;
+            return vertexData[x, z].isUnlocked;
         }
         
         /// <summary>
@@ -308,6 +374,30 @@ namespace FogSystem
             int x = Mathf.RoundToInt(worldPos.x / dataCellSize);
             int z = Mathf.RoundToInt(worldPos.z / dataCellSize);
             return GetTerrainCell(x, z);
+        }
+        
+        /// <summary>
+        /// 根据任意精度格子坐标获取角点数据（用于不同精度查询）
+        /// </summary>
+        /// <param name="gridX">查询精度下的格子X坐标</param>
+        /// <param name="gridZ">查询精度下的格子Z坐标</param>
+        /// <param name="queryCellSize">查询使用的格子大小</param>
+        /// <returns>对应的角点数据</returns>
+        public TerrainVertex GetVertexAtGrid(int gridX, int gridZ, float queryCellSize)
+        {
+            // 将查询格子坐标转换为世界坐标
+            float worldX = gridX * queryCellSize;
+            float worldZ = gridZ * queryCellSize;
+            
+            // 转换为角点坐标
+            float vertexX = worldX / dataCellSize;
+            float vertexZ = worldZ / dataCellSize;
+            
+            // 使用最近邻采样
+            int nearestX = Mathf.RoundToInt(vertexX);
+            int nearestZ = Mathf.RoundToInt(vertexZ);
+            
+            return GetVertex(nearestX, nearestZ);
         }
         
         /// <summary>
@@ -335,32 +425,63 @@ namespace FogSystem
         }
         
         /// <summary>
-        /// 解锁指定区域
+        /// 高效获取指定格子的四个角点数据（专为FogSystem优化）
+        /// </summary>
+        /// <param name="cellX">格子X坐标</param>
+        /// <param name="cellZ">格子Z坐标</param>
+        /// <param name="bottomLeft">左下角点</param>
+        /// <param name="bottomRight">右下角点</param>
+        /// <param name="topRight">右上角点</param>
+        /// <param name="topLeft">左上角点</param>
+        /// <returns>是否成功获取</returns>
+        public bool GetCellCorners(int cellX, int cellZ, out TerrainVertex bottomLeft, out TerrainVertex bottomRight, out TerrainVertex topRight, out TerrainVertex topLeft)
+        {
+            if (cellX < 0 || cellX >= dataGridCountX || cellZ < 0 || cellZ >= dataGridCountZ)
+            {
+                bottomLeft = bottomRight = topRight = topLeft = new TerrainVertex { height = 0f, terrainType = TerrainType.Plain, isUnlocked = false };
+                return false;
+            }
+            
+            // 直接获取四个角点
+            bottomLeft = GetVertex(cellX, cellZ);
+            bottomRight = GetVertex(cellX + 1, cellZ);
+            topRight = GetVertex(cellX + 1, cellZ + 1);
+            topLeft = GetVertex(cellX, cellZ + 1);
+            
+            return true;
+        }
+        
+        /// <summary>
+        /// 解锁指定区域（基于角点）
         /// </summary>
         public void UnlockArea(Vector3 centerWorldPos, float radius)
         {
+            // 转换为角点坐标
             int centerX = Mathf.RoundToInt(centerWorldPos.x / dataCellSize);
             int centerZ = Mathf.RoundToInt(centerWorldPos.z / dataCellSize);
-            int radiusCells = Mathf.RoundToInt(radius / dataCellSize);
+            int radiusVertices = Mathf.RoundToInt(radius / dataCellSize);
             
-            for (int x = centerX - radiusCells; x <= centerX + radiusCells; x++)
+            for (int x = centerX - radiusVertices; x <= centerX + radiusVertices; x++)
             {
-                for (int z = centerZ - radiusCells; z <= centerZ + radiusCells; z++)
+                for (int z = centerZ - radiusVertices; z <= centerZ + radiusVertices; z++)
                 {
                     float distance = Vector2.Distance(new Vector2(x, z), new Vector2(centerX, centerZ));
-                    if (distance <= radiusCells)
+                    if (distance <= radiusVertices)
                     {
-                        SetUnlocked(x, z, true);
+                        SetVertexUnlocked(x, z, true);
                     }
                 }
             }
         }
         
+        // 公共属性
         public float MapWidth => mapWidth;
         public float MapHeight => mapHeight;
         public float DataCellSize => dataCellSize;
-        public int DataGridCountX => dataGridCountX;
-        public int DataGridCountZ => dataGridCountZ;
+        public int DataGridCountX => dataGridCountX;  // 格子数量
+        public int DataGridCountZ => dataGridCountZ;  // 格子数量
+        public int VertexCountX => vertexCountX;      // 角点数量
+        public int VertexCountZ => vertexCountZ;      // 角点数量
         public TerrainDataConfig Config => config;
     }
 } 
