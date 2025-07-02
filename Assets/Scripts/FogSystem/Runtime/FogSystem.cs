@@ -55,7 +55,8 @@ namespace FogSystem
         [SerializeField] private float meshHeight = 50f;  // 单个mesh的高度（米，应为cellSize的整数倍）
         
         [Header("显示配置")]
-        [SerializeField] private Material terrainMaterial; // 地形材质
+        [SerializeField] private Material fogBaseMaterial; // 地形材质
+        [SerializeField] private Material fogMaterial; // 地形材质
         [SerializeField] private bool showUnlockedOverlay = true; // 是否在未解锁区域显示覆盖层
         
         [Header("视锥剔除配置")]
@@ -243,7 +244,7 @@ namespace FogSystem
                 meshes[meshX, meshZ] = new Mesh();
                 meshes[meshX, meshZ].name = $"TerrainMesh_{meshX}_{meshZ}";
                 meshFilter.mesh = meshes[meshX, meshZ];
-                meshRenderer.material = terrainMaterial;
+                meshRenderer.materials = new []{fogBaseMaterial, fogMaterial };
             }
             
             // 生成这个mesh块的数据
