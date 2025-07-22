@@ -14,7 +14,7 @@ namespace FogSystem
     }
 
     /// <summary>
-    /// 小块数据结构
+    /// 小块数据结构（简化版本，用于调试）
     /// </summary>
     [System.Serializable]
     public struct CellBlock
@@ -25,11 +25,11 @@ namespace FogSystem
         public int globalGridZ;        // 全局格子坐标Z
         public CellBlockType blockType; // 小块类型
         
-        // 四个角点的地形数据（左下、右下、右上、左上）
-        public TerrainCell bottomLeft;
-        public TerrainCell bottomRight;
-        public TerrainCell topRight;
-        public TerrainCell topLeft;
+        // 四个角点的高度
+        public float bottomLeftHeight;
+        public float bottomRightHeight;
+        public float topRightHeight;
+        public float topLeftHeight;
         
         // 四个角点的解锁状态
         public bool bottomLeftUnlocked;
@@ -39,8 +39,8 @@ namespace FogSystem
     }
 
     /// <summary>
-    /// 简化的迷雾系统 - 专注于地形可视化
-    /// 根据地形数据生成带颜色标记的mesh，显示地形类型和解锁状态
+    /// 简化的迷雾系统 - 专注于Mesh管理
+    /// 负责mesh块的创建、显示/隐藏管理、视锥剔除等
     /// </summary>
     public class FogSystem : MonoBehaviour
     {
@@ -65,13 +65,7 @@ namespace FogSystem
         [SerializeField] private float groundPlaneHeight = 0f; // 地面平面高度
         [SerializeField] private float cullingMargin = 10f; // 剔除边界扩展距离（米）
         
-        [Header("调试信息")]
-        [SerializeField] private bool showDebugInfo = true;
-        [SerializeField] private bool showVisibleMeshBounds = false; // 是否显示可见mesh块的边界
-        [SerializeField] private bool showCellBlockGizmos = false; // 是否显示CellBlock类型的Gizmo
-        
         // 核心组件
-        private TerrainDataReader terrainReader;
         private GameObject[,] meshObjects; // 多个地形mesh对象
         private Mesh[,] meshes;
         
@@ -89,10 +83,17 @@ namespace FogSystem
         private Vector2Int maxVisibleMesh = Vector2Int.zero;
         private bool[,] meshVisibility; // 记录每个mesh块的可见性状态
         
+        private bool systemInitialized = false;
+        
+#if UNITY_EDITOR
+        [Header("调试信息")]
+        [SerializeField] private bool showDebugInfo = true;
+        [SerializeField] private bool showVisibleMeshBounds = false; // 是否显示可见mesh块的边界
+        [SerializeField] private bool showCellBlockGizmos = false; // 是否显示CellBlock类型的Gizmo
+        
         // CellBlock数据存储（用于Gizmo显示）
         private CellBlock[,] allCellBlocks; // 存储所有CellBlock数据
-        
-        private bool systemInitialized = false;
+#endif
         
         private void Awake()
         {
@@ -132,8 +133,10 @@ namespace FogSystem
             // 初始化视锥剔除相关数组
             meshVisibility = new bool[meshCountX, meshCountZ];
             
-            // 初始化CellBlock数据存储
+#if UNITY_EDITOR
+            // 初始化CellBlock数据存储（仅在编辑器中用于Gizmo显示）
             allCellBlocks = new CellBlock[gridCountX, gridCountZ];
+#endif
             
             // 如果没有指定相机，尝试自动找到主相机
             if (mainCamera == null)
@@ -145,19 +148,20 @@ namespace FogSystem
                 }
             }
             
-            // 初始化地形数据读取器（使用独立的数据精度）
-            terrainReader = new TerrainDataReader();
-            terrainReader.Initialize(mapWidth, mapHeight, dataCellSize);
+            // 初始化地形数据读取器（使用静态方法）
+            TerrainDataReader.Initialize(mapWidth, mapHeight, dataCellSize);
             
             systemInitialized = true;
-            Debug.Log($"FogSystem: 系统初始化完成，地图总尺寸: {mapWidth}x{mapHeight}米，显示精度: {cellSize}米({gridCountX}x{gridCountZ}格子)，数据精度: {dataCellSize}米({terrainReader.DataGridCountX}x{terrainReader.DataGridCountZ}格子)");
+            Debug.Log($"FogSystem: 系统初始化完成，地图总尺寸: {mapWidth}x{mapHeight}米，显示精度: {cellSize}米({gridCountX}x{gridCountZ}格子)，数据精度: {dataCellSize}米({TerrainDataReader.DataGridCountX}x{TerrainDataReader.DataGridCountZ}格子)");
             Debug.Log($"FogSystem: Mesh拆分配置，单个mesh尺寸: {meshWidth}x{meshHeight}米，mesh块数量: {meshCountX}x{meshCountZ}");
             Debug.Log($"FogSystem: 视锥剔除配置，主相机: {(mainCamera != null ? mainCamera.name : "未找到")}, 启用状态: {enableFrustumCulling}");
             
+#if UNITY_EDITOR
             if (showDebugInfo)
             {
                 LogTerrainStatistics();
             }
+#endif
         }
         
         /// <summary>
@@ -210,7 +214,7 @@ namespace FogSystem
         }
         
         /// <summary>
-        /// 生成单个mesh块
+        /// 生成单个mesh块（调用SingleFogMeshGenerator）
         /// </summary>
         private void GenerateMeshBlock(int meshX, int meshZ)
         {
@@ -247,634 +251,15 @@ namespace FogSystem
                 meshRenderer.materials = new []{fogBaseMaterial, fogMaterial };
             }
             
-            // 生成这个mesh块的数据
-            BuildMeshBlockData(meshX, meshZ, startGridX, startGridZ, blockGridCountX, blockGridCountZ);
+            // 调用SingleFogMeshGenerator生成mesh数据（使用简化的接口）
+            SingleFogMeshGenerator.GenerateMeshBlock(meshes[meshX, meshZ], startGridX, startGridZ, 
+                blockGridCountX, blockGridCountZ, cellSize);
+            
+#if UNITY_EDITOR
+            // 存储CellBlock数据用于Gizmo显示
+            StoreCellBlocksToGlobalArray(startGridX, startGridZ, blockGridCountX, blockGridCountZ);
+#endif
         }
-        
-        /// <summary>
-        /// 构建单个mesh块的数据
-        /// </summary>
-        private void BuildMeshBlockData(int meshX, int meshZ, int startGridX, int startGridZ, int blockGridCountX, int blockGridCountZ)
-        {
-            // 第一步：创建并分类所有小块
-            CellBlock[,] cellBlocks = CreateAndClassifyCellBlocks(startGridX, startGridZ, blockGridCountX, blockGridCountZ);
-            
-            // 第二步：将CellBlock数据存储到全局数组中（用于Gizmo显示）
-            StoreCellBlocksToGlobalArray(cellBlocks, startGridX, startGridZ, blockGridCountX, blockGridCountZ);
-            
-            // 第三步：基于分类后的小块生成mesh数据
-            GenerateMeshFromCellBlocks(meshX, meshZ, cellBlocks, startGridX, startGridZ, blockGridCountX, blockGridCountZ);
-        }
-        
-        /// <summary>
-        /// 创建并分类所有小块
-        /// </summary>
-        private CellBlock[,] CreateAndClassifyCellBlocks(int startGridX, int startGridZ, int blockGridCountX, int blockGridCountZ)
-        {
-            CellBlock[,] cellBlocks = new CellBlock[blockGridCountX, blockGridCountZ];
-            
-            // 第一遍：创建所有小块并初始化基础数据
-            for (int localZ = 0; localZ < blockGridCountZ; localZ++)
-            {
-                for (int localX = 0; localX < blockGridCountX; localX++)
-                {
-                    cellBlocks[localX, localZ] = CreateCellBlock(localX, localZ, startGridX, startGridZ);
-                }
-            }
-            
-            // 第二遍：根据角点数量直接分类所有小块
-            for (int localZ = 0; localZ < blockGridCountZ; localZ++)
-            {
-                for (int localX = 0; localX < blockGridCountX; localX++)
-                {
-                    cellBlocks[localX, localZ] = ClassifyBasicCellBlock(cellBlocks[localX, localZ]);
-                }
-            }
-
-            // 第三遍：标记AdjacentUnLocked（与PartialUnlocked相邻的块）
-            MarkAdjacentUnLockedBlocks(cellBlocks, blockGridCountX, blockGridCountZ, startGridX, startGridZ);
-            return cellBlocks;
-        }
-        
-        /// <summary>
-        /// 创建单个小块
-        /// </summary>
-        private CellBlock CreateCellBlock(int localX, int localZ, int startGridX, int startGridZ)
-        {
-            CellBlock block = new CellBlock();
-            
-            // 设置坐标
-            block.gridX = localX;
-            block.gridZ = localZ;
-            block.globalGridX = startGridX + localX;
-            block.globalGridZ = startGridZ + localZ;
-            
-            // 直接从TerrainDataReader获取四个角点数据
-            int globalX = block.globalGridX;
-            int globalZ = block.globalGridZ;
-            
-            // 获取四个角点的地形顶点数据（左下、右下、右上、左上）
-            TerrainVertex bottomLeftVertex = terrainReader.GetVertexAtGrid(globalX, globalZ, cellSize);
-            TerrainVertex bottomRightVertex = terrainReader.GetVertexAtGrid(globalX + 1, globalZ, cellSize);
-            TerrainVertex topRightVertex = terrainReader.GetVertexAtGrid(globalX + 1, globalZ + 1, cellSize);
-            TerrainVertex topLeftVertex = terrainReader.GetVertexAtGrid(globalX, globalZ + 1, cellSize);
-            
-            // 转换为TerrainCell格式（保持兼容性）
-            block.bottomLeft = VertexToCell(bottomLeftVertex);
-            block.bottomRight = VertexToCell(bottomRightVertex);
-            block.topRight = VertexToCell(topRightVertex);
-            block.topLeft = VertexToCell(topLeftVertex);
-            
-            // 计算解锁状态
-            block.bottomLeftUnlocked = bottomLeftVertex.isUnlocked || bottomLeftVertex.terrainType == TerrainType.Unlocked;
-            block.bottomRightUnlocked = bottomRightVertex.isUnlocked || bottomRightVertex.terrainType == TerrainType.Unlocked;
-            block.topRightUnlocked = topRightVertex.isUnlocked || topRightVertex.terrainType == TerrainType.Unlocked;
-            block.topLeftUnlocked = topLeftVertex.isUnlocked || topLeftVertex.terrainType == TerrainType.Unlocked;
-            
-            return block;
-        }
-        
-        /// <summary>
-        /// 将TerrainVertex转换为TerrainCell（兼容性转换）
-        /// </summary>
-        private TerrainCell VertexToCell(TerrainVertex vertex)
-        {
-            TerrainCell cell = new TerrainCell();
-            cell.height = vertex.height;
-            cell.terrainType = vertex.terrainType;
-            cell.isUnlocked = vertex.isUnlocked;
-            cell.noiseValue = vertex.noiseValue;
-            return cell;
-        }
-        
-        /// <summary>
-        /// 根据角点数量直接分类小块类型
-        /// </summary>
-        private CellBlock ClassifyBasicCellBlock(CellBlock block)
-        {
-            // 统计解锁的角点数量
-            int unlockedCorners = 0;
-            if (block.bottomLeftUnlocked) unlockedCorners++;
-            if (block.bottomRightUnlocked) unlockedCorners++;
-            if (block.topRightUnlocked) unlockedCorners++;
-            if (block.topLeftUnlocked) unlockedCorners++;
-            
-            // 根据解锁角点数量直接分类
-            if (unlockedCorners == 4)
-            {
-                block.blockType = CellBlockType.FullUnlocked;
-            }
-            else if (unlockedCorners == 0)
-            {
-                block.blockType = CellBlockType.FullLocked;
-            }
-            else
-            {
-                // 部分解锁的情况（1-3个角点解锁）
-                block.blockType = CellBlockType.PartialUnlocked;
-            }
-            
-            return block;
-        }
-        
-
-                /// <summary>
-        /// 标记AdjacentUnLocked块（与PartialUnlocked相邻的块）
-        /// </summary>
-        private void MarkAdjacentUnLockedBlocks(CellBlock[,] cellBlocks, int blockGridCountX, int blockGridCountZ, int startGridX, int startGridZ)
-        {
-            // 四个方向的偏移量（左右上下）
-            int[] dx = { -1, 1, 0, 0};
-            int[] dz = { 0, 0, 1, -1};
-            
-            for (int localZ = 0; localZ < blockGridCountZ; localZ++)
-            {
-                for (int localX = 0; localX < blockGridCountX; localX++)
-                {
-                    // 只处理仍然是FullLocked的块
-                    if (cellBlocks[localX, localZ].blockType != CellBlockType.FullLocked)
-                        continue;
-                    
-                    // 检查四个相邻位置是否有PartialUnlocked块
-                    bool hasPartialUnlockedNeighbor = false;
-                    for (int i = 0; i < 4; i++)
-                    {
-                        int neighborX = localX + dx[i];
-                        int neighborZ = localZ + dz[i];
-                        
-                        CellBlockType neighborType = GetNeighborBlockType(cellBlocks, neighborX, neighborZ, blockGridCountX, blockGridCountZ, startGridX, startGridZ);
-                        
-                        if (neighborType == CellBlockType.PartialUnlocked)
-                        {
-                            hasPartialUnlockedNeighbor = true;
-                            break;
-                        }
-                    }
-                    
-                    // 如果有PartialUnlocked邻居，标记为AdjacentUnLocked
-                    if (hasPartialUnlockedNeighbor)
-                    {
-                        CellBlock block = cellBlocks[localX, localZ];
-                        block.blockType = CellBlockType.AdjacentUnLocked;
-                        cellBlocks[localX, localZ] = block;
-                    }
-                }
-            }
-        }
-
-        
-        /// <summary>
-        /// 获取邻居小块的类型（支持跨MeshBlock查询）
-        /// </summary>
-        private CellBlockType GetNeighborBlockType(CellBlock[,] cellBlocks, int neighborX, int neighborZ, int blockGridCountX, int blockGridCountZ, int startGridX, int startGridZ)
-        {
-            // 如果邻居在当前MeshBlock内，直接返回其类型
-            if (neighborX >= 0 && neighborX < blockGridCountX && 
-                neighborZ >= 0 && neighborZ < blockGridCountZ)
-            {
-                return cellBlocks[neighborX, neighborZ].blockType;
-            }
-            
-            // 邻居超出当前MeshBlock范围，通过角点数据计算
-            int globalNeighborX = startGridX + neighborX;
-            int globalNeighborZ = startGridZ + neighborZ;
-            
-            // 检查全局坐标是否有效
-            if (globalNeighborX < 0 || globalNeighborX >= gridCountX || 
-                globalNeighborZ < 0 || globalNeighborZ >= gridCountZ)
-            {
-                return CellBlockType.FullLocked; // 超出地图边界，视为完全锁定
-            }
-            
-            // 直接调用计算方法
-            return CalculateNeighborCellBlockType(globalNeighborX, globalNeighborZ);
-        }
-        
-        /// <summary>
-        /// 检查指定全局格子坐标的角点是否解锁
-        /// </summary>
-        private bool IsCornerUnlocked(int globalX, int globalZ)
-        {
-            // 边界处理
-            int queryX = Mathf.Clamp(globalX, 0, gridCountX - 1);
-            int queryZ = Mathf.Clamp(globalZ, 0, gridCountZ - 1);
-            
-            TerrainCell terrainCell = terrainReader.GetTerrainCellAtGrid(queryX, queryZ, cellSize);
-            return terrainCell.isUnlocked || terrainCell.terrainType == TerrainType.Unlocked;
-        }
-        
-        /// <summary>
-        /// 将CellBlock数据存储到全局数组中
-        /// </summary>
-        private void StoreCellBlocksToGlobalArray(CellBlock[,] cellBlocks, int startGridX, int startGridZ, int blockGridCountX, int blockGridCountZ)
-        {
-            for (int localZ = 0; localZ < blockGridCountZ; localZ++)
-            {
-                for (int localX = 0; localX < blockGridCountX; localX++)
-                {
-                    int globalX = startGridX + localX;
-                    int globalZ = startGridZ + localZ;
-                    
-                    // 确保全局坐标在有效范围内
-                    if (globalX >= 0 && globalX < gridCountX && globalZ >= 0 && globalZ < gridCountZ)
-                    {
-                        allCellBlocks[globalX, globalZ] = cellBlocks[localX, localZ];
-                    }
-                }
-            }
-        }
-        
-        /// <summary>
-        /// 基于分类后的小块生成mesh数据
-        /// </summary>
-        private void GenerateMeshFromCellBlocks(int meshX, int meshZ, CellBlock[,] cellBlocks, int startGridX, int startGridZ, int blockGridCountX, int blockGridCountZ)
-        {
-            // 计算基础顶点数量：每个格子需要4个顶点，但相邻格子共享顶点
-            int vertexCountX = blockGridCountX + 1;
-            int vertexCountZ = blockGridCountZ + 1;
-            
-            // 使用List来支持动态添加顶点（用于细分的PartialUnlocked格子）
-            System.Collections.Generic.List<Vector3> verticesList = new System.Collections.Generic.List<Vector3>();
-            System.Collections.Generic.List<Vector2> uvsList = new System.Collections.Generic.List<Vector2>();
-            System.Collections.Generic.List<Color> colorsList = new System.Collections.Generic.List<Color>();
-            
-            // 生成基础网格顶点数据
-            for (int localZ = 0; localZ <= blockGridCountZ; localZ++)
-            {
-                for (int localX = 0; localX <= blockGridCountX; localX++)
-                {
-                    // 全局格子坐标
-                    int globalX = startGridX + localX;
-                    int globalZ = startGridZ + localZ;
-                    
-                    // 世界坐标
-                    float worldX = globalX * cellSize;
-                    float worldZ = globalZ * cellSize;
-                    
-                    // 获取地形数据（使用任意精度查询，支持不同的数据和显示精度）
-                    int queryX = Mathf.Clamp(globalX, 0, gridCountX - 1);
-                    int queryZ = Mathf.Clamp(globalZ, 0, gridCountZ - 1);
-                    TerrainCell terrainCell = terrainReader.GetTerrainCellAtGrid(queryX, queryZ, cellSize);
-                    
-                    // 根据解锁状态设置顶点颜色（使用Color的r,g通道存储Vector2信息）
-                    Color vertexColor = GetVertexUnlockColor(terrainCell, globalX, globalZ);
-                    
-                    verticesList.Add(new Vector3(worldX, terrainCell.height, worldZ));
-                    uvsList.Add(new Vector2((float)localX / blockGridCountX, (float)localZ / blockGridCountZ));
-                    colorsList.Add(vertexColor);
-                }
-            }
-            
-            // 生成三角形（根据CellBlockType采用不同的生成策略）
-            System.Collections.Generic.List<int> triangleList = new System.Collections.Generic.List<int>();
-            
-            for (int localZ = 0; localZ < blockGridCountZ; localZ++)
-            {
-                for (int localX = 0; localX < blockGridCountX; localX++)
-                {
-                    // 获取当前格子的CellBlockType
-                    CellBlockType currentBlockType = cellBlocks[localX, localZ].blockType;
-                    
-                    // 当前格子的4个顶点索引（基于本地mesh块坐标）
-                    int bottomLeft = localZ * vertexCountX + localX;
-                    int bottomRight = bottomLeft + 1;
-                    int topLeft = (localZ + 1) * vertexCountX + localX;
-                    int topRight = topLeft + 1;
-                    
-                    // 根据CellBlockType采用不同的三角形生成策略
-                    switch (currentBlockType)
-                    {
-                        case CellBlockType.FullUnlocked:
-                            // 完全解锁 - 不生成三角形，创建"空洞"
-                            break;
-                            
-                        case CellBlockType.PartialUnlocked:
-                            // 部分解锁 - 根据相邻cell状态决定生成策略
-                            GeneratePartialUnlockedTriangles(triangleList, verticesList, uvsList, colorsList,
-                                bottomLeft, bottomRight, topLeft, topRight,
-                                localX, localZ, blockGridCountX, blockGridCountZ, cellBlocks, startGridX, startGridZ);
-                            break;
-                            
-                        case CellBlockType.AdjacentUnLocked:
-                            GenerateDenceTriangles(triangleList, verticesList, uvsList, colorsList, 
-                                bottomLeft, bottomRight, topLeft, topRight, 
-                                localX, localZ, blockGridCountX, blockGridCountZ, cellBlocks);
-                                // 相邻未锁定 - 标准三角形生成（后续可能会有特殊处理）
-                            break;
-                            
-                        case CellBlockType.FullLocked:
-                        default:
-                            // 完全锁定 - 标准三角形生成
-                            GenerateStandardTriangles(triangleList, bottomLeft, bottomRight, topLeft, topRight);
-                            break;
-                    }
-                }
-            }
-            
-            // 转换为数组
-            int[] triangles = triangleList.ToArray();
-            
-            // 应用到mesh
-            Mesh currentMesh = meshes[meshX, meshZ];
-            currentMesh.Clear();
-            currentMesh.vertices = verticesList.ToArray();
-            currentMesh.triangles = triangles;
-            currentMesh.uv = uvsList.ToArray();
-            currentMesh.colors = colorsList.ToArray();
-            currentMesh.RecalculateNormals();
-            currentMesh.RecalculateBounds();
-        }
-        
-        /// <summary>
-        /// 生成标准的两个三角形（一个格子）
-        /// </summary>
-        private void GenerateStandardTriangles(System.Collections.Generic.List<int> triangleList, int bottomLeft, int bottomRight, int topLeft, int topRight)
-        {
-            // 第一个三角形（逆时针：左下-左上-右下）
-            triangleList.Add(bottomLeft);
-            triangleList.Add(topLeft);
-            triangleList.Add(bottomRight);
-            
-            // 第二个三角形（逆时针：左上-右上-右下）
-            triangleList.Add(topLeft);
-            triangleList.Add(topRight);
-            triangleList.Add(bottomRight);
-        }
-        
-        /// <summary>
-        /// 生成PartialUnlocked类型的细分三角形（1个格子分成4个小四边形）
-        /// </summary>
-        private void GenerateDenceTriangles(System.Collections.Generic.List<int> triangleList, 
-            System.Collections.Generic.List<Vector3> verticesList, 
-            System.Collections.Generic.List<Vector2> uvsList, 
-            System.Collections.Generic.List<Color> colorsList,
-            int bottomLeft, int bottomRight, int topLeft, int topRight,
-            int localX, int localZ, int blockGridCountX, int blockGridCountZ, CellBlock[,] cellBlocks)
-        {
-            // 获取四个角顶点的数据
-            Vector3 blVertex = verticesList[bottomLeft];
-            Vector3 brVertex = verticesList[bottomRight];
-            Vector3 tlVertex = verticesList[topLeft];
-            Vector3 trVertex = verticesList[topRight];
-            
-            Vector2 blUV = uvsList[bottomLeft];
-            Vector2 brUV = uvsList[bottomRight];
-            Vector2 tlUV = uvsList[topLeft];
-            Vector2 trUV = uvsList[topRight];
-            
-            Color blColor = colorsList[bottomLeft];
-            Color brColor = colorsList[bottomRight];
-            Color tlColor = colorsList[topLeft];
-            Color trColor = colorsList[topRight];
-            
-            // 计算5个新顶点（4个边中点 + 1个中心点）
-            Vector3 bottomMid = Vector3.Lerp(blVertex, brVertex, 0.5f);
-            Vector3 rightMid = Vector3.Lerp(brVertex, trVertex, 0.5f);
-            Vector3 topMid = Vector3.Lerp(tlVertex, trVertex, 0.5f);
-            Vector3 leftMid = Vector3.Lerp(blVertex, tlVertex, 0.5f);
-            Vector3 center = Vector3.Lerp(Vector3.Lerp(blVertex, brVertex, 0.5f), Vector3.Lerp(tlVertex, trVertex, 0.5f), 0.5f);
-            
-            Vector2 bottomMidUV = Vector2.Lerp(blUV, brUV, 0.5f);
-            Vector2 rightMidUV = Vector2.Lerp(brUV, trUV, 0.5f);
-            Vector2 topMidUV = Vector2.Lerp(tlUV, trUV, 0.5f);
-            Vector2 leftMidUV = Vector2.Lerp(blUV, tlUV, 0.5f);
-            Vector2 centerUV = Vector2.Lerp(Vector2.Lerp(blUV, brUV, 0.5f), Vector2.Lerp(tlUV, trUV, 0.5f), 0.5f);
-            
-              // 颜色使用PartialUnlocked的颜色
-            Color partialColor = new Color(1.0f, 1.0f, 0.0f, 0f);
-            
-            // 添加新顶点到列表中，并记录它们的索引
-            int bottomMidIndex = verticesList.Count;
-
-
-            verticesList.Add(bottomMid);
-            uvsList.Add(bottomMidUV);
-            colorsList.Add(partialColor);
-            
-            int rightMidIndex = verticesList.Count;
-
-
-            verticesList.Add(rightMid);
-            uvsList.Add(rightMidUV);
-            colorsList.Add(partialColor);
-            
-            int topMidIndex = verticesList.Count;
-
-
-            verticesList.Add(topMid);
-            uvsList.Add(topMidUV);
-            colorsList.Add(partialColor);
-            
-            int leftMidIndex = verticesList.Count;
-
-
-            verticesList.Add(leftMid);
-            uvsList.Add(leftMidUV);
-            colorsList.Add(partialColor);
-            
-            int centerIndex = verticesList.Count;
-
-
-            verticesList.Add(center);
-            uvsList.Add(centerUV);
-            colorsList.Add(partialColor);
-            
-            // 生成4个小四边形的三角形
-            // 左下小四边形：bottomLeft -> bottomMid -> center -> leftMid
-            GenerateStandardTriangles(triangleList, bottomLeft, bottomMidIndex, leftMidIndex, centerIndex);
-            
-            // 右下小四边形：bottomMid -> bottomRight -> rightMid -> center
-            GenerateStandardTriangles(triangleList, bottomMidIndex, bottomRight, centerIndex, rightMidIndex);
-            
-            // 右上小四边形：center -> rightMid -> topRight -> topMid
-            GenerateStandardTriangles(triangleList, centerIndex, rightMidIndex, topMidIndex, topRight);
-            
-            // 左上小四边形：leftMid -> center -> topMid -> topLeft
-            GenerateStandardTriangles(triangleList, leftMidIndex, centerIndex, topLeft, topMidIndex);
-        }
-        
-        /// <summary>
-        /// 生成PartialUnlocked类型的优化三角形
-        /// </summary>
-        private void GeneratePartialUnlockedTriangles(System.Collections.Generic.List<int> triangleList,
-            System.Collections.Generic.List<Vector3> verticesList,
-            System.Collections.Generic.List<Vector2> uvsList,
-            System.Collections.Generic.List<Color> colorsList,
-            int bottomLeft, int bottomRight, int topLeft, int topRight,
-            int localX, int localZ, int blockGridCountX, int blockGridCountZ, CellBlock[,] cellBlocks,
-            int startGridX, int startGridZ)
-        {
-            // 检查四个相邻cell的解锁状态
-            bool leftUnlocked = IsNeighborCellUnlocked(localX - 1, localZ, cellBlocks, blockGridCountX, blockGridCountZ, startGridX, startGridZ);
-            bool rightUnlocked = IsNeighborCellUnlocked(localX + 1, localZ, cellBlocks, blockGridCountX, blockGridCountZ, startGridX, startGridZ);
-            bool topUnlocked = IsNeighborCellUnlocked(localX, localZ + 1, cellBlocks, blockGridCountX, blockGridCountZ, startGridX, startGridZ);
-            bool bottomUnlocked = IsNeighborCellUnlocked(localX, localZ - 1, cellBlocks, blockGridCountX, blockGridCountZ, startGridX, startGridZ);
-            
-            // 检查是否有两个相邻的cell都是解锁的，如果是则生成单个三角形（逆时针顺序）
-            if (leftUnlocked && topUnlocked)
-            {
-                // 左+上都解锁：保留右下三角形（逆时针：左下-右下-右上）
-                triangleList.Add(bottomRight);
-                triangleList.Add(bottomLeft);
-                triangleList.Add(topRight);
-            }
-            else if (topUnlocked && rightUnlocked)
-            {
-                // 上+右都解锁：保留左下三角形（逆时针：左下-左上-右下）
-                triangleList.Add(bottomLeft);
-                triangleList.Add(topLeft);
-                triangleList.Add(bottomRight);
-            }
-            else if (rightUnlocked && bottomUnlocked)
-            {
-                // 右+下都解锁：保留左上三角形（逆时针：左下-左上-右上）
-                triangleList.Add(bottomLeft);
-                triangleList.Add(topLeft);
-                triangleList.Add(topRight);
-            }
-            else if (bottomUnlocked && leftUnlocked)
-            {
-                // 下+左都解锁：保留右上三角形（逆时针：左上-右上-右下）
-                triangleList.Add(topLeft);
-                triangleList.Add(topRight);
-                triangleList.Add(bottomRight);
-            }
-            else
-            {
-                // 没有两个相邻cell都解锁，使用标准的两个三角形
-                GenerateStandardTriangles(triangleList, bottomLeft, bottomRight, topLeft, topRight);
-            }
-        }
-        
-        /// <summary>
-        /// 检查指定位置的相邻cell是否为完全解锁状态
-        /// </summary>
-        private bool IsNeighborCellUnlocked(int neighborLocalX, int neighborLocalZ, CellBlock[,] cellBlocks,
-            int blockGridCountX, int blockGridCountZ, int startGridX, int startGridZ)
-        {
-            // 如果邻居在当前MeshBlock内，直接检查其类型
-            if (neighborLocalX >= 0 && neighborLocalX < blockGridCountX &&
-                neighborLocalZ >= 0 && neighborLocalZ < blockGridCountZ)
-            {
-                return cellBlocks[neighborLocalX, neighborLocalZ].blockType == CellBlockType.FullUnlocked;
-            }
-            
-            // 邻居超出当前MeshBlock范围，直接通过角点数据计算
-            int globalNeighborX = startGridX + neighborLocalX;
-            int globalNeighborZ = startGridZ + neighborLocalZ;
-            
-            // 检查全局坐标是否有效
-            if (globalNeighborX < 0 || globalNeighborX >= gridCountX ||
-                globalNeighborZ < 0 || globalNeighborZ >= gridCountZ)
-            {
-                return false; // 超出地图边界，视为未解锁
-            }
-            
-            // 直接通过角点数据计算邻居cell的类型
-            return CalculateNeighborCellBlockType(globalNeighborX, globalNeighborZ) == CellBlockType.FullUnlocked;
-        }
-        
-        /// <summary>
-        /// 直接通过角点数据计算指定全局坐标cell的blockType
-        /// </summary>
-        private CellBlockType CalculateNeighborCellBlockType(int globalX, int globalZ)
-        {
-            // 获取四个角点的解锁状态
-            TerrainVertex bottomLeft = terrainReader.GetVertexAtGrid(globalX, globalZ, cellSize);
-            TerrainVertex bottomRight = terrainReader.GetVertexAtGrid(globalX + 1, globalZ, cellSize);
-            TerrainVertex topRight = terrainReader.GetVertexAtGrid(globalX + 1, globalZ + 1, cellSize);
-            TerrainVertex topLeft = terrainReader.GetVertexAtGrid(globalX, globalZ + 1, cellSize);
-            
-            // 统计解锁的角点数量
-            int unlockedCorners = 0;
-            if (bottomLeft.isUnlocked || bottomLeft.terrainType == TerrainType.Unlocked) unlockedCorners++;
-            if (bottomRight.isUnlocked || bottomRight.terrainType == TerrainType.Unlocked) unlockedCorners++;
-            if (topRight.isUnlocked || topRight.terrainType == TerrainType.Unlocked) unlockedCorners++;
-            if (topLeft.isUnlocked || topLeft.terrainType == TerrainType.Unlocked) unlockedCorners++;
-            
-            // 根据解锁角点数量返回类型
-            if (unlockedCorners == 4)
-            {
-                return CellBlockType.FullUnlocked;
-            }
-            else if (unlockedCorners == 0)
-            {
-                return CellBlockType.FullLocked;
-            }
-            else
-            {
-                // 部分解锁的情况（1-3个角点解锁）
-                return CellBlockType.PartialUnlocked;
-            }
-        }
-        
-        /// <summary>
-        /// 根据顶点解锁状态获取颜色信息（使用Color的r,g通道存储Vector2信息）
-        /// </summary>
-        private Color GetVertexUnlockColor(TerrainCell terrainCell, int globalX, int globalZ)
-        {
-            // 检查顶点是否被解锁
-            bool isUnlocked = terrainCell.isUnlocked || terrainCell.terrainType == TerrainType.Unlocked;
-            
-            // 根据解锁状态设置Vector2值
-            Vector2 unlockState;
-            if (isUnlocked)
-            {
-                unlockState = new Vector2(0f, 1f); // 已解锁: (0, 1)
-            }
-            else
-            {
-                unlockState = new Vector2(1f, 1f); // 未解锁: (1, 1)
-            }
-            
-            // 将Vector2信息编码到Color的r,g通道中，b,a通道设为0
-            return new Color(unlockState.x, unlockState.y, 0f, 0f);
-        }
-        
-        /// <summary>
-        /// 获取影响顶点的主导小块类型
-        /// </summary>
-        private CellBlockType GetDominantBlockTypeForVertex(int localX, int localZ, CellBlock[,] cellBlocks, int blockGridCountX, int blockGridCountZ)
-        {
-            // 一个顶点最多被4个小块共享，我们需要找到优先级最高的类型
-            CellBlockType dominantType = CellBlockType.FullLocked;
-            
-            // 检查左下小块
-            if (localX > 0 && localZ > 0)
-            {
-                dominantType = GetHigherPriorityType(dominantType, cellBlocks[localX - 1, localZ - 1].blockType);
-            }
-            
-            // 检查右下小块
-            if (localX < blockGridCountX && localZ > 0)
-            {
-                dominantType = GetHigherPriorityType(dominantType, cellBlocks[localX, localZ - 1].blockType);
-            }
-            
-            // 检查右上小块
-            if (localX < blockGridCountX && localZ < blockGridCountZ)
-            {
-                dominantType = GetHigherPriorityType(dominantType, cellBlocks[localX, localZ].blockType);
-            }
-            
-            // 检查左上小块
-            if (localX > 0 && localZ < blockGridCountZ)
-            {
-                dominantType = GetHigherPriorityType(dominantType, cellBlocks[localX - 1, localZ].blockType);
-            }
-            
-            return dominantType;
-        }
-        
-        /// <summary>
-        /// 获取更高优先级的小块类型（FullUnlocked > PartialUnlocked > AdjacentUnLocked > FullLocked）
-        /// </summary>
-        private CellBlockType GetHigherPriorityType(CellBlockType type1, CellBlockType type2)
-        {
-            return (CellBlockType)Mathf.Max((int)type1, (int)type2);
-        }
-        
-
         
         /// <summary>
         /// 世界坐标转网格坐标
@@ -886,31 +271,6 @@ namespace FogSystem
             return new Vector2Int(gridX, gridZ);
         }
         
-        /// <summary>
-        /// 记录地形统计信息
-        /// </summary>
-        private void LogTerrainStatistics()
-        {
-            int[] terrainCounts = new int[6]; // 增加到6种地形类型
-            int unlockedCount = 0;
-            int totalDataCells = terrainReader.DataGridCountX * terrainReader.DataGridCountZ;
-            
-            // 统计实际数据格子，而不是显示格子
-            for (int x = 0; x < terrainReader.DataGridCountX; x++)
-            {
-                for (int z = 0; z < terrainReader.DataGridCountZ; z++)
-                {
-                    TerrainCell cell = terrainReader.GetTerrainCell(x, z);
-                    terrainCounts[(int)cell.terrainType]++;
-                    if (cell.isUnlocked) unlockedCount++;
-                }
-            }
-            
-            Debug.Log($"地形统计 - 平原: {terrainCounts[0]}, 丘陵: {terrainCounts[1]}, 山脉: {terrainCounts[2]}, 湖泊: {terrainCounts[3]}, 森林: {terrainCounts[4]}, 已解锁: {terrainCounts[5]}");
-            Debug.Log($"解锁区域: {unlockedCount}/{totalDataCells} ({(float)unlockedCount / totalDataCells * 100:F1}%)");
-            Debug.Log($"显示精度: {cellSize}m，数据精度: {terrainReader.DataCellSize}m");
-        }
-
         private void UpdateFrustumCulling()
         {
             // 计算视锥与地面的交点
@@ -1077,6 +437,228 @@ namespace FogSystem
             return new Bounds(center, size);
         }
         
+        /// <summary>
+        /// 手动强制更新视锥剔除（用于性能优化，比如当相机移动较大距离时）
+        /// </summary>
+        public void ForceUpdateFrustumCulling()
+        {
+            if (systemInitialized && enableFrustumCulling && mainCamera != null)
+            {
+                UpdateFrustumCulling();
+            }
+        }
+        
+        /// <summary>
+        /// 设置视锥剔除启用状态
+        /// </summary>
+        public void SetFrustumCullingEnabled(bool enabled)
+        {
+            enableFrustumCulling = enabled;
+            
+            if (!enabled)
+            {
+                // 如果禁用视锥剔除，显示所有mesh块
+                ShowAllMeshBlocks();
+            }
+            else if (mainCamera != null)
+            {
+                // 如果启用视锥剔除，立即更新
+                UpdateFrustumCulling();
+            }
+        }
+        
+        /// <summary>
+        /// 显示所有mesh块
+        /// </summary>
+        private void ShowAllMeshBlocks()
+        {
+            for (int x = 0; x < meshCountX; x++)
+            {
+                for (int z = 0; z < meshCountZ; z++)
+                {
+                    if (meshObjects[x, z] != null)
+                    {
+                        meshObjects[x, z].SetActive(true);
+                        meshVisibility[x, z] = true;
+                    }
+                }
+            }
+        }
+        
+        /// <summary>
+        /// 设置主相机
+        /// </summary>
+        public void SetMainCamera(Camera camera)
+        {
+            mainCamera = camera;
+            if (enableFrustumCulling && systemInitialized)
+            {
+                UpdateFrustumCulling();
+            }
+        }
+        
+        /// <summary>
+        /// 获取当前可见的mesh块数量
+        /// </summary>
+        public int GetVisibleMeshBlockCount()
+        {
+            int count = 0;
+            for (int x = 0; x < meshCountX; x++)
+            {
+                for (int z = 0; z < meshCountZ; z++)
+                {
+                    if (meshVisibility[x, z]) count++;
+                }
+            }
+            return count;
+        }
+        
+        /// <summary>
+        /// 获取mesh块的可见性信息
+        /// </summary>
+        public bool IsMeshBlockVisible(int meshX, int meshZ)
+        {
+            if (meshX < 0 || meshX >= meshCountX || meshZ < 0 || meshZ >= meshCountZ)
+                return false;
+                
+            return meshVisibility[meshX, meshZ];
+        }
+        
+        /// <summary>
+        /// 重新生成指定mesh块（用于动态更新）
+        /// </summary>
+        public void RegenerateMeshBlock(int meshX, int meshZ)
+        {
+            if (meshX < 0 || meshX >= meshCountX || meshZ < 0 || meshZ >= meshCountZ)
+                return;
+                
+            GenerateMeshBlock(meshX, meshZ);
+        }
+        
+        /// <summary>
+        /// 重新生成所有mesh块（用于全局更新）
+        /// </summary>
+        public void RegenerateAllMeshBlocks()
+        {
+            for (int meshX = 0; meshX < meshCountX; meshX++)
+            {
+                for (int meshZ = 0; meshZ < meshCountZ; meshZ++)
+                {
+                    GenerateMeshBlock(meshX, meshZ);
+                }
+            }
+        }
+
+        // ==================== 编辑器调试功能 ====================
+#if UNITY_EDITOR
+        
+        /// <summary>
+        /// 创建调试用的CellBlock数据
+        /// </summary>
+        private CellBlock CreateDebugCellBlock(int localX, int localZ, int startGridX, int startGridZ)
+        {
+            CellBlock block = new CellBlock();
+            
+            // 设置坐标
+            block.gridX = localX;
+            block.gridZ = localZ;
+            block.globalGridX = startGridX + localX;
+            block.globalGridZ = startGridZ + localZ;
+            
+            // 获取四个角点的高度和解锁状态
+            int globalX = block.globalGridX;
+            int globalZ = block.globalGridZ;
+            
+            float bottomLeftHeight, bottomRightHeight, topRightHeight, topLeftHeight;
+            if (TerrainDataReader.GetCellCornerHeights(globalX, globalZ, out bottomLeftHeight, out bottomRightHeight, out topRightHeight, out topLeftHeight))
+            {
+                block.bottomLeftHeight = bottomLeftHeight;
+                block.bottomRightHeight = bottomRightHeight;
+                block.topRightHeight = topRightHeight;
+                block.topLeftHeight = topLeftHeight;
+                
+                // 判断解锁状态：高度为0表示解锁
+                block.bottomLeftUnlocked = Mathf.Approximately(bottomLeftHeight, 0f);
+                block.bottomRightUnlocked = Mathf.Approximately(bottomRightHeight, 0f);
+                block.topRightUnlocked = Mathf.Approximately(topRightHeight, 0f);
+                block.topLeftUnlocked = Mathf.Approximately(topLeftHeight, 0f);
+                
+                // 分类CellBlock类型
+                int unlockedCorners = 0;
+                if (block.bottomLeftUnlocked) unlockedCorners++;
+                if (block.bottomRightUnlocked) unlockedCorners++;
+                if (block.topRightUnlocked) unlockedCorners++;
+                if (block.topLeftUnlocked) unlockedCorners++;
+                
+                if (unlockedCorners == 4)
+                    block.blockType = CellBlockType.FullUnlocked;
+                else if (unlockedCorners == 0)
+                    block.blockType = CellBlockType.FullLocked;
+                else
+                    block.blockType = CellBlockType.PartialUnlocked;
+            }
+            else
+            {
+                // 默认值
+                block.bottomLeftHeight = block.bottomRightHeight = block.topRightHeight = block.topLeftHeight = 12f;
+                block.bottomLeftUnlocked = block.bottomRightUnlocked = block.topRightUnlocked = block.topLeftUnlocked = false;
+                block.blockType = CellBlockType.FullLocked;
+            }
+            
+            return block;
+        }
+        
+        /// <summary>
+        /// 将CellBlock数据存储到全局数组中（仅在编辑器中用于Gizmo显示）
+        /// </summary>
+        private void StoreCellBlocksToGlobalArray(int startGridX, int startGridZ, int blockGridCountX, int blockGridCountZ)
+        {
+            for (int localZ = 0; localZ < blockGridCountZ; localZ++)
+            {
+                for (int localX = 0; localX < blockGridCountX; localX++)
+                {
+                    int globalX = startGridX + localX;
+                    int globalZ = startGridZ + localZ;
+                    
+                    // 确保全局坐标在有效范围内
+                    if (globalX >= 0 && globalX < gridCountX && globalZ >= 0 && globalZ < gridCountZ)
+                    {
+                        allCellBlocks[globalX, globalZ] = CreateDebugCellBlock(localX, localZ, startGridX, startGridZ);
+                    }
+                }
+            }
+        }
+        
+        /// <summary>
+        /// 记录地形统计信息
+        /// </summary>
+        private void LogTerrainStatistics()
+        {
+            int unlockedCount = 0;
+            int totalDataCells = TerrainDataReader.DataGridCountX * TerrainDataReader.DataGridCountZ;
+            
+            // 统计解锁的格子数量
+            for (int x = 0; x < TerrainDataReader.DataGridCountX; x++)
+            {
+                for (int z = 0; z < TerrainDataReader.DataGridCountZ; z++)
+                {
+                    float bl, br, tr, tl;
+                    if (TerrainDataReader.GetCellCornerHeights(x, z, out bl, out br, out tr, out tl))
+                    {
+                        // 如果四个角点都是0高度，认为是解锁区域
+                        if (Mathf.Approximately(bl, 0f) && Mathf.Approximately(br, 0f) && 
+                            Mathf.Approximately(tr, 0f) && Mathf.Approximately(tl, 0f))
+                        {
+                            unlockedCount++;
+                        }
+                    }
+                }
+            }
+            
+            Debug.Log($"解锁区域: {unlockedCount}/{totalDataCells} ({(float)unlockedCount / totalDataCells * 100:F1}%)");
+            Debug.Log($"显示精度: {cellSize}m，数据精度: {TerrainDataReader.DataCellSize}m");
+        }
+
         private void OnDrawGizmos()
         {
             if (!Application.isPlaying || !systemInitialized) return;
@@ -1170,91 +752,6 @@ namespace FogSystem
             }
         }
         
-        /// <summary>
-        /// 手动强制更新视锥剔除（用于性能优化，比如当相机移动较大距离时）
-        /// </summary>
-        public void ForceUpdateFrustumCulling()
-        {
-            if (systemInitialized && enableFrustumCulling && mainCamera != null)
-            {
-                UpdateFrustumCulling();
-            }
-        }
-        
-        /// <summary>
-        /// 设置视锥剔除启用状态
-        /// </summary>
-        public void SetFrustumCullingEnabled(bool enabled)
-        {
-            enableFrustumCulling = enabled;
-            
-            if (!enabled)
-            {
-                // 如果禁用视锥剔除，显示所有mesh块
-                ShowAllMeshBlocks();
-            }
-            else if (mainCamera != null)
-            {
-                // 如果启用视锥剔除，立即更新
-                UpdateFrustumCulling();
-            }
-        }
-        
-        /// <summary>
-        /// 显示所有mesh块
-        /// </summary>
-        private void ShowAllMeshBlocks()
-        {
-            for (int x = 0; x < meshCountX; x++)
-            {
-                for (int z = 0; z < meshCountZ; z++)
-                {
-                    if (meshObjects[x, z] != null)
-                    {
-                        meshObjects[x, z].SetActive(true);
-                        meshVisibility[x, z] = true;
-                    }
-                }
-            }
-        }
-        
-        /// <summary>
-        /// 设置主相机
-        /// </summary>
-        public void SetMainCamera(Camera camera)
-        {
-            mainCamera = camera;
-            if (enableFrustumCulling && systemInitialized)
-            {
-                UpdateFrustumCulling();
-            }
-        }
-        
-        /// <summary>
-        /// 获取当前可见的mesh块数量
-        /// </summary>
-        public int GetVisibleMeshBlockCount()
-        {
-            int count = 0;
-            for (int x = 0; x < meshCountX; x++)
-            {
-                for (int z = 0; z < meshCountZ; z++)
-                {
-                    if (meshVisibility[x, z]) count++;
-                }
-            }
-            return count;
-        }
-        
-        /// <summary>
-        /// 获取mesh块的可见性信息
-        /// </summary>
-        public bool IsMeshBlockVisible(int meshX, int meshZ)
-        {
-            if (meshX < 0 || meshX >= meshCountX || meshZ < 0 || meshZ >= meshCountZ)
-                return false;
-                
-            return meshVisibility[meshX, meshZ];
-        }
+#endif
     }
 } 
