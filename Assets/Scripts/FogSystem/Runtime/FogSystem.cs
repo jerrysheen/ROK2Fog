@@ -45,14 +45,14 @@ namespace FogSystem
     public class FogSystem : MonoBehaviour
     {
         [Header("地图配置")]
-        [SerializeField] private float mapWidth = 500f;   // 地图总宽度（米）
-        [SerializeField] private float mapHeight = 500f;  // 地图总高度（米）
+        [SerializeField] private float mapWidth = 1200f;   // 地图总宽度（米）
+        [SerializeField] private float mapHeight = 1200f;  // 地图总高度（米）
         [SerializeField] private float cellSize = 1f;     // 显示格子的边长（米）
         [SerializeField] private float dataCellSize = 5f; // 数据格子的边长（米，可以比显示格子更大以节省内存）
         
         [Header("Mesh拆分配置")]
-        [SerializeField] private float meshWidth = 50f;   // 单个mesh的宽度（米，应为cellSize的整数倍）
-        [SerializeField] private float meshHeight = 50f;  // 单个mesh的高度（米，应为cellSize的整数倍）
+        [SerializeField] private float meshWidth = 360;   // 单个mesh的宽度（米，应为cellSize的整数倍）
+        [SerializeField] private float meshHeight = 180f;  // 单个mesh的高度（米，应为cellSize的整数倍）
         
         [Header("显示配置")]
         [SerializeField] private Material fogBaseMaterial; // 地形材质

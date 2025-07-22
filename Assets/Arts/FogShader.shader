@@ -97,12 +97,12 @@ Shader "Elex/FogShader"
                 float  _31;
                 _22.x = _34.x + _21.x;
                 _22.x *= 0.5;
-
+    
                 _20.x = input.color.x;
                 _20.x = clamp(_20.x, 0.0, 1.0);
                 _20.x = log2(_20.x);
                 _30.x = _20.x * 3.0f;
-                _20.x *= 0.4000000059604644775390625;
+                _20.x *= 0.1;
                 _20.x = exp2(_20.x);
                 _30.x = exp2(_30.x);
                 _31 = min(_30.x, 1.0);
@@ -110,7 +110,8 @@ Shader "Elex/FogShader"
                 _22.x = _31 * _22.x;
                 _22.x = exp2(_22.x);
                 _20.x *= _22.x;
-
+                _20.x = clamp(_20.x,0,0.7);
+               // return half4(_20.x,_20.x,_20.x,1.0f);
 
                 // 深度相关
                 float2 screenUV = input.positionCS.xy / _ScaledScreenParams.xy;
@@ -167,7 +168,7 @@ Shader "Elex/FogShader"
     half3 _328 = half3(1.05496, 0.54219, 0.2732)+ 0;
     _22 = half4(_328.x, _22.y, _328.y, _328.z);
     half3 _343 = (half3(_31.x,_31.x,_31.x) * _22.xzw) + half3(0.0,0,0);
-    _21 = half4(_343.x, _343.y, _343.z, _21.w);
+    _21 = half4(_343.x, _343.y, _343.z, _20.x);
     return _21;
           }
             ENDHLSL

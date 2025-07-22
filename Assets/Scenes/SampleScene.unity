@@ -314,7 +314,7 @@ Transform:
   m_GameObject: {fileID: 330585543}
   serializedVersion: 2
   m_LocalRotation: {x: 0.5604248, y: 0.0025426678, z: -0.0016070908, w: 0.8281999}
-  m_LocalPosition: {x: 179.55742, y: 151.27898, z: 45.12036}
+  m_LocalPosition: {x: 881.8, y: 283, z: 241}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -696,7 +696,7 @@ MonoBehaviour:
   cullingMargin: 10
   showDebugInfo: 1
   showVisibleMeshBounds: 1
-  showCellBlockGizmos: 0
+  showCellBlockGizmos: 1
 --- !u!1 &976419487
 GameObject:
   m_ObjectHideFlags: 0
