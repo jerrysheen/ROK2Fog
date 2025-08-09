@@ -189,7 +189,7 @@ namespace FogSystem
             
             // 根据噪声值生成高度变化（基础高度12，添加±2的高度浮动）
             float heightVariation = (noiseValue - 0.5f) * 4f; // -2 to 2
-            vertex.height = 12f + heightVariation;
+            vertex.height = 5f + heightVariation;
             
             return vertex;
         }

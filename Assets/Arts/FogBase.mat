@@ -115,8 +115,8 @@ Material:
     - _DstBlend: 10
     - _DstBlendAlpha: 10
     - _EnvironmentReflections: 1
-    - _FogDensity: 3
-    - _FogDepthLerp: 0.1
+    - _FogDensity: 1.57
+    - _FogDepthLerp: 1.02
     - _FogEnd: 100
     - _FogStart: 1
     - _GlossMapScale: 0
@@ -139,6 +139,6 @@ Material:
     - _BaseColor: {r: 0.6976682, g: 0.735849, b: 0.7140825, a: 0.21176471}
     - _Color: {r: 0.6976682, g: 0.735849, b: 0.7140825, a: 0.21176471}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
-    - _FogColor: {r: 0.2924528, g: 0.09880163, b: 0, a: 0.972549}
+    - _FogColor: {r: 0.68733144, g: 0.39152572, b: 0.24362285, a: 0.972549}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
   m_BuildTextureStacks: []

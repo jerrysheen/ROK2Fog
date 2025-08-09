@@ -32,6 +32,7 @@ Shader "Elex/FogShader"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl"
+            #pragma enable_d3d11_debug_symbols
 
             struct Attributes
             {
@@ -89,7 +90,7 @@ Shader "Elex/FogShader"
                 _34.x = SAMPLE_TEXTURE2D(_Fog1, sampler_Fog1, _33).x;
                 _21.x = SAMPLE_TEXTURE2D(_Fog1, sampler_Fog1, _20.xy).x;
                 
-                //return half4(_34.x,0,0,1);
+               // return half4(_34.x,0,0,1);
 
                 // 边缘效果生成
                 float4 _22;
@@ -110,17 +111,14 @@ Shader "Elex/FogShader"
                 _22.x = _31 * _22.x;
                 _22.x = exp2(_22.x);
                 _20.x *= _22.x;
-                _20.x = clamp(_20.x,0,0.7);
-               // return half4(_20.x,_20.x,_20.x,1.0f);
+              
 
                 // 深度相关
-                float2 screenUV = input.positionCS.xy / _ScaledScreenParams.xy;
-                float depth = SAMPLE_TEXTURE2D(_CameraDepthTexture, sampler_CameraDepthTexture, screenUV).r; //采样深度
-                float depthValue = LinearEyeDepth(depth, _ZBufferParams); //转换深度到0-1区间灰度值
-                
-                depthValue -= abs(input.viewZ);
+                float2 screenUV = input.positionCS.xy / _ScreenParams;
+                float depth = SampleSceneDepth(screenUV); //采样深度
+                float depthValue = LinearEyeDepth(depth, _ZBufferParams); //转到LinearEyeDepth
+                depthValue += -abs(input.viewZ);
                 _30.x = depthValue;
-
                 // 视角相关：
       float3 _25;          
     //_25 = _16.xyz + (-_37._m1);
@@ -133,7 +131,8 @@ Shader "Elex/FogShader"
     half2 _226 = _25.xz * half2(0.605f,0.605f);
     _25 = half3(_226.x, _226.y, _25.z);
     _33 = _25.xy / _33.xx;
-//..................
+
+                //..................
 
 //return half4(depthValue,0,0,1);
                 //depthValue = clamp(depthValue, 0.0, 1.0);
@@ -152,7 +151,7 @@ Shader "Elex/FogShader"
     //_22.x = _34.y * _37._m4;
     _22.x = _34.y * 0.594f;
     _31 = _32.x * _34.x;
-//return half4(_31.x,_32.x,_32.x,1);
+
 
 // 还差15没解决，以及看看_13是什么
                 
@@ -163,13 +162,13 @@ Shader "Elex/FogShader"
     _30.x = clamp(_30.x, 0.0, 1.0);
     _30.x *= _30.x;
     _22.x = min(_20.x, _30.x);
-    _21.w = _22.x * 1.2;
+    _21.w = _22.x * input.color.y;
     //half3 _328 = _37._m9.xyz + (-vec3(_37._m10.x, _37._m10.y, _37._m10.z));
     half3 _328 = half3(1.05496, 0.54219, 0.2732)+ 0;
     _22 = half4(_328.x, _22.y, _328.y, _328.z);
     half3 _343 = (half3(_31.x,_31.x,_31.x) * _22.xzw) + half3(0.0,0,0);
-    _21 = half4(_343.x, _343.y, _343.z, _20.x);
-    return _21;
+    _21 = half4(_343.x, _343.y, _343.z, (_21.w));
+    return input.color.y;
           }
             ENDHLSL
         }

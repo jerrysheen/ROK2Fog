@@ -71,7 +71,7 @@ Shader "Elex/FogBaseShader"
                 float depth = SAMPLE_TEXTURE2D(_CameraDepthTexture, sampler_CameraDepthTexture, screenUV).r; //采样深度
                 float depthValue = LinearEyeDepth(depth, _ZBufferParams); //转换深度到0-1区间灰度值
                 
-                depthValue -= abs(input.viewZ);
+                depthValue -= abs(input.positionCS.z);
                 depthValue = abs(depthValue) * 0.1;
                 depthValue = clamp(depthValue, 0.0, 1.0);
                 depthValue *= depthValue;
